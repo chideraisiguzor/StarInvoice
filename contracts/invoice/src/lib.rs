@@ -3,7 +3,7 @@
 mod events;
 mod storage;
 
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, String};
 
 pub use storage::Invoice;
 
@@ -92,8 +92,20 @@ impl InvoiceContract {
     ///
     /// # TODO
     /// Not yet implemented. See: <https://github.com/your-org/StarInvoice/issues/3>
-    pub fn approve_payment(_env: Env, _invoice_id: u64) {
-        todo!("approve_payment not yet implemented")
+    pub fn approve_payment(env: Env, invoice_id: u64) {
+        let mut invoice = storage::get_invoice(&env, invoice_id);
+
+        invoice.client.require_auth();
+
+        assert!(
+            invoice.status == storage::InvoiceStatus::Delivered,
+            "Invoice must be in Delivered status"
+        );
+
+        invoice.status = storage::InvoiceStatus::Approved;
+        storage::save_invoice(&env, &invoice);
+
+        events::approve_payment(&env, invoice_id, &invoice.client);
     }
 
     /// Cancels a Pending invoice, voiding it permanently.
@@ -162,7 +174,7 @@ mod tests {
         assert_eq!(invoice_id, 0);
 
         // Verify the invoice was stored correctly
-        let invoice = storage::get_invoice(&env, invoice_id);
+        let invoice = env.as_contract(&contract_id, || storage::get_invoice(&env, invoice_id));
         assert_eq!(invoice.freelancer, freelancer);
         assert_eq!(invoice.client, payer);
         assert_eq!(invoice.amount, 1000);
