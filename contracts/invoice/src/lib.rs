@@ -87,11 +87,20 @@ impl InvoiceContract {
     /// # Errors
     /// - Panics if the caller is not the invoice freelancer.
     /// - Panics if the invoice status is not `Funded`.
-    ///
-    /// # TODO
-    /// Not yet implemented. See: <https://github.com/your-org/StarInvoice/issues/2>
-    pub fn mark_delivered(_env: Env, _invoice_id: u64) {
-        todo!("mark_delivered not yet implemented")
+    pub fn mark_delivered(env: Env, invoice_id: u64) {
+        let mut invoice = storage::get_invoice(&env, invoice_id);
+
+        invoice.freelancer.require_auth();
+
+        assert!(
+            invoice.status == storage::InvoiceStatus::Funded,
+            "Invoice must be in Funded status"
+        );
+
+        invoice.status = storage::InvoiceStatus::Delivered;
+        storage::save_invoice(&env, &invoice);
+
+        events::mark_delivered(&env, invoice_id, &invoice.freelancer);
     }
 
     /// Allows the client to approve the delivered work, authorising fund release.
@@ -208,7 +217,7 @@ mod tests {
         let invoice_id = client.create_invoice(&freelancer, &payer, &500, &description);
         client.cancel_invoice(&invoice_id, &freelancer);
 
-        let invoice = storage::get_invoice(&env, invoice_id);
+        let invoice = env.as_contract(&contract_id, || storage::get_invoice(&env, invoice_id));
         assert_eq!(invoice.status, storage::InvoiceStatus::Cancelled);
     }
 
@@ -227,7 +236,7 @@ mod tests {
         let invoice_id = client.create_invoice(&freelancer, &payer, &200, &description);
         client.cancel_invoice(&invoice_id, &payer);
 
-        let invoice = storage::get_invoice(&env, invoice_id);
+        let invoice = env.as_contract(&contract_id, || storage::get_invoice(&env, invoice_id));
         assert_eq!(invoice.status, storage::InvoiceStatus::Cancelled);
     }
 
